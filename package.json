@@ -1,7 +1,7 @@
 {
   "name": "live-radio-backend",
-  "version": "1.0.0",
-  "description": "Backend server for live radio application",
+  "version": "2.0.0",
+  "description": "MVC Backend API server for live radio application",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -13,7 +13,10 @@
     "node",
     "radio",
     "backend",
-    "api"
+    "api",
+    "mvc",
+    "rest",
+    "websocket"
   ],
   "author": "",
   "license": "MIT",
