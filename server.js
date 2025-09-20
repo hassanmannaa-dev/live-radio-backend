@@ -10,9 +10,10 @@ const setupRoutes = require("./routes");
 const RadioController = require("./controllers/RadioController");
 const QueueController = require("./controllers/QueueController");
 const SearchController = require("./controllers/SearchController");
+const UserController = require("./controllers/UserController");
 
 // Server configuration
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5000;
 
 async function startServer() {
   try {
@@ -26,18 +27,20 @@ async function startServer() {
     const radioController = new RadioController(io);
     const queueController = new QueueController(radioController, io);
     const searchController = new SearchController();
+    const userController = new UserController(io);
 
     const controllers = {
       radioController,
       queueController,
       searchController,
+      userController,
     };
 
     // Setup routes
     setupRoutes(app, controllers);
 
     // Setup Socket.IO handlers
-    setupSocketHandlers(io, radioController);
+    setupSocketHandlers(io, radioController, userController);
 
     // Error handling middleware (must be last)
     app.use(errorHandler);
@@ -59,6 +62,9 @@ async function startServer() {
       console.log("   - POST /api/queue");
       console.log("   - GET  /api/queue");
       console.log("   - GET  /api/search");
+      console.log("   - POST /api/user/register");
+      console.log("   - POST /api/user/setup");
+      console.log("   - GET  /api/user/online");
       console.log("   - GET  /health");
       console.log("🚀 ================================");
     });

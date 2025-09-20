@@ -21,13 +21,6 @@ function createAppServer() {
 }
 
 function setupMiddleware(app) {
-  // Security middleware
-  app.use(
-    helmet({
-      contentSecurityPolicy: false, // Disable CSP for API server
-    })
-  );
-
   // CORS middleware
   app.use(cors());
 
@@ -37,9 +30,6 @@ function setupMiddleware(app) {
   // Body parsing middleware
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-  // Remove static file serving - this is now backend only
-  // app.use(express.static(".")); // REMOVED
 }
 
 module.exports = {

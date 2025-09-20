@@ -2,14 +2,17 @@ const express = require("express");
 const createRadioRoutes = require("./radioRoutes");
 const createQueueRoutes = require("./queueRoutes");
 const createSearchRoutes = require("./searchRoutes");
+const createUserRoutes = require("./userRoutes");
 
 function setupRoutes(app, controllers) {
-  const { radioController, queueController, searchController } = controllers;
+  const { radioController, queueController, searchController, userController } =
+    controllers;
 
   // API Routes
   app.use("/api/radio", createRadioRoutes(radioController));
   app.use("/api/queue", createQueueRoutes(queueController));
   app.use("/api/search", createSearchRoutes(searchController));
+  app.use("/api/user", createUserRoutes(userController));
 
   // Legacy routes for backward compatibility
   app.use("/radio", createRadioRoutes(radioController));
@@ -37,6 +40,7 @@ function setupRoutes(app, controllers) {
         radio: "/api/radio",
         queue: "/api/queue",
         search: "/api/search",
+        user: "/api/user",
         health: "/health",
       },
     });
@@ -47,7 +51,12 @@ function setupRoutes(app, controllers) {
     res.status(404).json({
       error: "API endpoint not found",
       endpoint: req.originalUrl,
-      availableEndpoints: ["/api/radio", "/api/queue", "/api/search"],
+      availableEndpoints: [
+        "/api/radio",
+        "/api/queue",
+        "/api/search",
+        "/api/user",
+      ],
     });
   });
 }
