@@ -1,10 +1,12 @@
 const User = require("../models/User");
+const Chat = require("../models/Chat");
 
 class UserController {
   constructor(io) {
     this.io = io;
     this.users = new Map(); // Store users by ID
     this.socketToUser = new Map(); // Map socket IDs to user IDs
+    this.chat = new Chat(); // Chat instance for message persistence
   }
 
   // Register a new user
@@ -223,6 +225,36 @@ class UserController {
       offline: offlineUsers,
     };
   }
+
+  // Add message to chat history
+  addChatMessage(messageData) {
+    return this.chat.addMessage(messageData);
+  }
+
+  // Get chat history
+  getChatHistory(count = 50) {
+    return this.chat.getRecentMessages(count);
+  }
+
+  // API endpoint to get chat history
+  getChatHistoryEndpoint = async (req, res) => {
+    try {
+      const count = parseInt(req.query.count) || 50;
+      const messages = this.getChatHistory(count);
+
+      res.json({
+        success: true,
+        messages: messages,
+        count: messages.length,
+      });
+    } catch (error) {
+      console.error("Error getting chat history:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+      });
+    }
+  };
 }
 
 module.exports = UserController;

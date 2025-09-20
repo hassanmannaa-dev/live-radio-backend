@@ -11,6 +11,9 @@ function createUserRoutes(userController) {
   // Get user info by ID
   router.get("/:userId", userController.getUserInfo);
 
+  // Get chat history
+  router.get("/chat/history", userController.getChatHistoryEndpoint);
+
   // User setup endpoint (for frontend compatibility)
   router.post("/setup", userController.registerUser);
 

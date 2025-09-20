@@ -15,6 +15,9 @@ function setupSocketHandlers(io, radioController, userController) {
     // Send current online users
     socket.emit("usersUpdate", userController.getOnlineUsers());
 
+    // Send chat history to new connection
+    socket.emit("chatHistory", userController.getChatHistory());
+
     // Handle user authentication/connection
     socket.on("authenticateUser", (data) => {
       const { userId } = data;
@@ -69,6 +72,9 @@ function setupSocketHandlers(io, radioController, userController) {
         message: message.trim(),
         timestamp: new Date().toISOString(),
       };
+
+      // Save message to chat history
+      userController.addChatMessage(chatMessage);
 
       // Broadcast message to all connected clients
       io.emit("newMessage", chatMessage);
