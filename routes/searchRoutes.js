@@ -5,6 +5,9 @@ function createSearchRoutes(searchController) {
   // Search for songs
   router.get("/", searchController.searchSongs);
 
+  // Search for multiple songs
+  router.get("/multiple", searchController.searchMultipleSongs);
+
   // Get song info by ID
   router.get("/song/:id", searchController.getSongInfo);
 

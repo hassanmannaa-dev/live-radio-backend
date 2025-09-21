@@ -30,6 +30,42 @@ class YouTubeService {
     });
   }
 
+  // Search for multiple songs on YouTube Music
+  static async searchMultipleSongs(songTitle, limit = 3) {
+    console.log(`Searching for multiple songs: ${songTitle} (limit: ${limit})`);
+
+    return new Promise((resolve, reject) => {
+      const command = `yt-dlp -j "https://music.youtube.com/search?q=${songTitle}" --playlist-items 1:${limit}`;
+
+      exec(command, (error, stdout, stderr) => {
+        if (error) {
+          console.error("YouTube multiple search error:", error);
+          return reject(error);
+        }
+
+        try {
+          // Split by newlines since yt-dlp outputs one JSON object per line
+          const lines = stdout
+            .trim()
+            .split("\n")
+            .filter((line) => line.trim());
+          const songs = lines
+            .map((line) => {
+              const info = JSON.parse(line);
+              return Song.fromYouTubeData(info);
+            })
+            .filter((song) => song.isValid());
+
+          console.log(`Found ${songs.length} valid songs`);
+          resolve(songs);
+        } catch (err) {
+          console.error("Error parsing multiple YouTube data:", err);
+          reject(err);
+        }
+      });
+    });
+  }
+
   // Get song info without playing
   static async getSongInfo(id) {
     return new Promise((resolve, reject) => {

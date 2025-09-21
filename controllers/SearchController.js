@@ -41,6 +41,53 @@ class SearchController {
     }
   };
 
+  // Search for multiple songs on YouTube Music
+  searchMultipleSongs = async (req, res) => {
+    try {
+      const { query, limit } = req.query;
+
+      if (!query) {
+        return res.status(400).json({ error: "Search query is required" });
+      }
+
+      if (query.trim().length < 2) {
+        return res
+          .status(400)
+          .json({ error: "Search query must be at least 2 characters long" });
+      }
+
+      const searchLimit = Math.min(parseInt(limit) || 3); // Max 10 results
+      console.log(
+        `🔍 Searching for multiple songs: ${query} (limit: ${searchLimit})`
+      );
+
+      // Search for multiple songs
+      const songs = await YouTubeService.searchMultipleSongs(
+        query,
+        searchLimit
+      );
+
+      if (songs.length === 0) {
+        return res
+          .status(404)
+          .json({ error: "No valid songs found for this query" });
+      }
+
+      res.json({
+        message: "Search completed",
+        results: songs.map((song) => song.getInfo()),
+        count: songs.length,
+        query: query,
+      });
+    } catch (error) {
+      console.error("Multiple search error:", error);
+      res.status(500).json({
+        error: "Failed to search for songs",
+        message: error.message,
+      });
+    }
+  };
+
   // Get song info by ID
   getSongInfo = async (req, res) => {
     try {
