@@ -23,39 +23,57 @@ class RadioController {
   // Handle radio stream requests
   getStream = (req, res) => {
     try {
-      console.log("New listener joined the radio stream");
+      console.log("🎧 New listener joined the radio stream");
+
+      // Set CORS headers for cross-origin requests
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
       // Set headers for audio streaming
       res.setHeader("Content-Type", "audio/mpeg");
       res.setHeader("Transfer-Encoding", "chunked");
-      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.setHeader("Connection", "keep-alive");
       res.setHeader("Accept-Ranges", "none");
 
       // Add this connection to listeners
-      const listenerId = Date.now() + Math.random();
+      const listenerId = `listener_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       this.radio.addListener(listenerId);
 
       // If there's an active stream, pipe it to this response
       if (this.streamingService.isStreaming()) {
+        console.log("🎵 Piping active stream to new listener");
         this.streamingService.pipeToResponse(res);
       } else {
-        // No active stream, keep connection alive
-        res.write("");
+        // No active stream, send silence or keep connection alive
+        console.log("🔇 No active stream, keeping connection alive");
+        res.write(Buffer.alloc(0)); // Send empty buffer to keep connection alive
       }
 
       // Clean up when client disconnects
       res.on("close", () => {
-        console.log("Listener disconnected from radio stream");
+        console.log("🎧 Listener disconnected from radio stream");
+        this.radio.removeListener(listenerId);
+        this.io.emit("listenerUpdate", this.radio.getListenerCount());
+      });
+
+      res.on("error", (error) => {
+        console.error("🎧 Stream response error:", error);
         this.radio.removeListener(listenerId);
         this.io.emit("listenerUpdate", this.radio.getListenerCount());
       });
 
       // Update listener count
       this.io.emit("listenerUpdate", this.radio.getListenerCount());
+      console.log(`🎧 Total listeners: ${this.radio.getListenerCount()}`);
     } catch (error) {
-      console.error("Error handling stream request:", error);
-      res.status(500).json({ error: "Failed to start stream" });
+      console.error("❌ Error handling stream request:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to start stream" });
+      }
     }
   };
 
