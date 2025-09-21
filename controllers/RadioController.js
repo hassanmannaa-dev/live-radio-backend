@@ -65,23 +65,31 @@ class RadioController {
       if (!this.radio.hasNextSong()) {
         this.radio.stop();
         this.io.emit("radioUpdate", this.radio.getState());
+        this.io.emit("currentSongUpdate", null);
         return;
       }
 
       const nextSong = this.radio.getNextSong();
       this.radio.setCurrentSong(nextSong);
 
-      console.log(`🎵 Now playing: ${nextSong.title}`);
+      console.log(`🎵 Now playing: ${nextSong.title} - ${nextSong.artist}`);
 
       // Start streaming the song
       try {
         await this.streamingService.startStream(nextSong);
+
+        // Start progress tracking for synchronized playback
+        this.radio.startProgressTracking(this.io);
 
         // Set up stream event handlers
         const currentStream = this.streamingService.getCurrentStream();
         if (currentStream) {
           currentStream.on("close", (code) => {
             console.log(`Song ended: ${nextSong.title}`);
+            
+            // Stop progress tracking
+            this.radio.stopProgressTracking();
+            
             // Song finished, play next one after a small gap
             setTimeout(() => {
               this.playNextSong();
@@ -90,6 +98,10 @@ class RadioController {
 
           currentStream.on("error", (error) => {
             console.error("Stream error:", error);
+            
+            // Stop progress tracking
+            this.radio.stopProgressTracking();
+            
             // Try next song on error
             setTimeout(() => {
               this.playNextSong();
@@ -97,8 +109,11 @@ class RadioController {
           });
         }
 
-        // Notify all clients about current song
+        // Notify all clients about current song and radio state
         this.io.emit("radioUpdate", this.radio.getState());
+        this.io.emit("currentSongUpdate", nextSong.getInfo());
+        
+        console.log(`🎵 Started progress tracking for: ${nextSong.title}`);
       } catch (streamError) {
         console.error("Failed to start stream:", streamError);
         // Try next song if stream fails
@@ -115,8 +130,11 @@ class RadioController {
   stop = () => {
     try {
       this.streamingService.stopStream();
+      this.radio.stopProgressTracking();
       this.radio.stop();
       this.io.emit("radioUpdate", this.radio.getState());
+      this.io.emit("currentSongUpdate", null);
+      console.log("🛑 Radio stopped and progress tracking cleared");
     } catch (error) {
       console.error("Error stopping radio:", error);
     }

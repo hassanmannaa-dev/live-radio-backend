@@ -87,6 +87,26 @@ function setupSocketHandlers(io, radioController, userController) {
       socket.emit("radioUpdate", radio.getState());
     });
 
+    socket.on("requestCurrentSong", () => {
+      const currentSong = radio.currentSong ? radio.currentSong.getInfo() : null;
+      socket.emit("currentSongUpdate", currentSong);
+    });
+
+    socket.on("requestProgress", () => {
+      if (radio.isPlaying && radio.currentSong) {
+        const progressData = {
+          currentPosition: radio.getCurrentPosition(),
+          duration: radio.currentSong.duration || 0,
+          progress: radio.getProgressPercentage(),
+          formattedCurrentTime: radio.getFormattedCurrentTime(),
+          formattedDuration: radio.getFormattedDuration(),
+          isPlaying: radio.isPlaying,
+          currentSong: radio.currentSong.getInfo(),
+        };
+        socket.emit("progressUpdate", progressData);
+      }
+    });
+
     socket.on("requestPlaylist", () => {
       socket.emit(
         "playlistUpdate",
