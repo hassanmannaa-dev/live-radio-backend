@@ -1,69 +1,71 @@
-class User {
-  constructor(data) {
-    this.id = data.id || this.generateId();
-    this.name = data.name;
-    this.avatarId = data.avatarId;
-    this.socketId = data.socketId;
-    this.joinedAt = data.joinedAt || new Date();
-    this.isOnline = data.isOnline !== undefined ? data.isOnline : true;
-    this.lastActivity = data.lastActivity || new Date();
-  }
-
-  // Generate a unique user ID
-  generateId() {
-    return `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  // Update socket ID when user reconnects
-  updateSocketId(socketId) {
-    this.socketId = socketId;
-    this.isOnline = true;
-    this.lastActivity = new Date();
-  }
-
-  // Mark user as offline
-  setOffline() {
-    this.isOnline = false;
-    this.socketId = null;
-    this.lastActivity = new Date();
-  }
-
-  // Update last activity timestamp
-  updateActivity() {
-    this.lastActivity = new Date();
-  }
-
-  // Get user info for API responses (excluding sensitive data)
-  getInfo() {
-    return {
-      id: this.id,
-      name: this.name,
-      avatarId: this.avatarId,
-      isOnline: this.isOnline,
-      joinedAt: this.joinedAt,
-      lastActivity: this.lastActivity,
-    };
-  }
-
-  // Get user info for client-side display
-  getPublicInfo() {
-    return {
-      id: this.id,
-      name: this.name,
-      avatarId: this.avatarId,
-      isOnline: this.isOnline,
-    };
-  }
-
-  // Validate required fields
-  isValid() {
-    return this.name && this.name.trim().length > 0 && this.avatarId;
-  }
-
-  // Get avatar URL based on avatarId
-  getAvatarUrl() {
-    return `https://i.pravatar.cc/150?img=${this.avatarId}`;
-  }
+function generateId() {
+  return `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-module.exports = User;
+function createUser(data) {
+  return {
+    id: data.id || generateId(),
+    name: data.name,
+    avatarId: data.avatarId,
+    socketId: data.socketId,
+    joinedAt: data.joinedAt || new Date(),
+    isOnline: data.isOnline !== undefined ? data.isOnline : true,
+    lastActivity: data.lastActivity || new Date(),
+  };
+}
+
+function updateSocketId(user, socketId) {
+  user.socketId = socketId;
+  user.isOnline = true;
+  user.lastActivity = new Date();
+}
+
+function setOffline(user) {
+  user.isOnline = false;
+  user.socketId = null;
+  user.lastActivity = new Date();
+}
+
+function updateActivity(user) {
+  user.lastActivity = new Date();
+}
+
+function getInfo(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    avatarId: user.avatarId,
+    isOnline: user.isOnline,
+    joinedAt: user.joinedAt,
+    lastActivity: user.lastActivity,
+  };
+}
+
+function getPublicInfo(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    avatarId: user.avatarId,
+    isOnline: user.isOnline,
+  };
+}
+
+function isValid(user) {
+  return user.name && user.name.trim().length > 0 && user.avatarId;
+}
+
+function getAvatarUrl(user) {
+  return `https://i.pravatar.cc/150?img=${user.avatarId}`;
+}
+
+module.exports = {
+  generateId,
+  createUser,
+  updateSocketId,
+  setOffline,
+  updateActivity,
+  getInfo,
+  getPublicInfo,
+  isValid,
+  getAvatarUrl,
+};
