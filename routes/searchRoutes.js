@@ -1,20 +1,10 @@
 const express = require("express");
 const router = express.Router();
+const searchController = require("../controllers/SongController");
 
-function createSearchRoutes(searchController) {
-  // Search for songs
-  router.get("/", searchController.searchSongs);
+router.get("/", searchController.searchSongs);
+router.get("/multiple", searchController.searchMultipleSongs);
+router.get("/song/:id", searchController.getSongInfo);
+router.post("/validate", searchController.validateUrl);
 
-  // Search for multiple songs
-  router.get("/multiple", searchController.searchMultipleSongs);
-
-  // Get song info by ID
-  router.get("/song/:id", searchController.getSongInfo);
-
-  // Validate YouTube URL
-  router.post("/validate", searchController.validateUrl);
-
-  return router;
-}
-
-module.exports = createSearchRoutes;
+module.exports = router;

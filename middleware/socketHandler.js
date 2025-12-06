@@ -1,16 +1,6 @@
-function setupSocketHandlers(io, radioController, userController) {
-  const radio = radioController.getRadio();
-
+function setupSocketHandlers(io, userController) {
   io.on("connection", (socket) => {
     console.log(`🔌 Socket connected: ${socket.id}`);
-
-    // Send current radio state to new connection
-    socket.emit("radioUpdate", radio.getState());
-    socket.emit("listenerUpdate", radio.getListenerCount());
-    socket.emit(
-      "playlistUpdate",
-      radio.playlist.map((song) => song.getInfo())
-    );
 
     // Send current online users
     socket.emit("usersUpdate", userController.getOnlineUsers());
@@ -29,16 +19,15 @@ function setupSocketHandlers(io, radioController, userController) {
 
       const user = userController.connectUser(userId, socket.id);
       if (user) {
-        // Add user as radio listener
-        radio.addListener(socket.id);
-
         socket.emit("authSuccess", {
-          user: user.getInfo(),
+          user: {
+            id: user.id,
+            name: user.name,
+            avatarId: user.avatarId,
+            isOnline: user.isOnline,
+          },
           message: "Successfully connected to chat",
         });
-
-        // Update listener count for all clients
-        io.emit("listenerUpdate", radio.getListenerCount());
 
         console.log(`👤 User authenticated: ${user.name} (${socket.id})`);
       } else {
@@ -82,42 +71,6 @@ function setupSocketHandlers(io, radioController, userController) {
       console.log(`💬 Message from ${user.name}: ${message.trim()}`);
     });
 
-    // Handle client events
-    socket.on("requestRadioState", () => {
-      socket.emit("radioUpdate", radio.getState());
-    });
-
-    socket.on("requestCurrentSong", () => {
-      const currentSong = radio.currentSong ? radio.currentSong.getInfo() : null;
-      socket.emit("currentSongUpdate", currentSong);
-    });
-
-    socket.on("requestProgress", () => {
-      if (radio.isPlaying && radio.currentSong) {
-        const progressData = {
-          currentPosition: radio.getCurrentPosition(),
-          duration: radio.currentSong.duration || 0,
-          progress: radio.getProgressPercentage(),
-          formattedCurrentTime: radio.getFormattedCurrentTime(),
-          formattedDuration: radio.getFormattedDuration(),
-          isPlaying: radio.isPlaying,
-          currentSong: radio.currentSong.getInfo(),
-        };
-        socket.emit("progressUpdate", progressData);
-      }
-    });
-
-    socket.on("requestPlaylist", () => {
-      socket.emit(
-        "playlistUpdate",
-        radio.playlist.map((song) => song.getInfo())
-      );
-    });
-
-    socket.on("requestListenerCount", () => {
-      socket.emit("listenerUpdate", radio.getListenerCount());
-    });
-
     socket.on("requestOnlineUsers", () => {
       socket.emit("usersUpdate", userController.getOnlineUsers());
     });
@@ -126,14 +79,8 @@ function setupSocketHandlers(io, radioController, userController) {
     socket.on("disconnect", () => {
       console.log(`🔌 Socket disconnected: ${socket.id}`);
 
-      // Remove user from radio listeners
-      radio.removeListener(socket.id);
-
       // Disconnect user if authenticated
       const user = userController.disconnectUser(socket.id);
-
-      // Update listener count for all clients
-      io.emit("listenerUpdate", radio.getListenerCount());
     });
 
     // Handle connection errors

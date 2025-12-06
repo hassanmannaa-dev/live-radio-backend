@@ -1,14 +1,18 @@
-const YouTubeService = require("../services/YouTubeService");
+const SongService = require("../services/SongService");
+const Radio = require("../models/Radio");
 
-class QueueController {
-  constructor(radioController, io) {
-    this.radioController = radioController;
-    this.radio = radioController.getRadio();
-    this.io = io;
-  }
+// State management functions
+function createQueueControllerState(io) {
+  const radio = Radio.createRadio();
+  return {
+    radio,
+    io,
+  };
+}
 
-  // Add song to radio queue
-  addToQueue = async (req, res) => {
+// Add song to radio queue
+function addToQueue(state) {
+  return async (req, res) => {
     try {
       const { id } = req.body;
 
@@ -17,27 +21,27 @@ class QueueController {
       }
 
       // Get song info from YouTube
-      const songInfo = await YouTubeService.getSongInfo(id);
+      const songInfo = await SongService.getSongInfo(id);
 
       if (!songInfo.isValid()) {
         return res.status(400).json({ error: "Invalid song data" });
       }
 
       // Add to playlist
-      this.radio.addToPlaylist(songInfo);
+      Radio.addToPlaylist(state.radio, songInfo);
 
       // If nothing is playing, start this song
-      if (!this.radio.isPlaying) {
-        this.radioController.playNextSong();
+      if (!state.radio.isPlaying) {
+        playNextSong(state);
       }
 
       // Notify all clients about playlist update
-      this.io.emit("playlistUpdate", this.radio.playlist);
+      state.io.emit("playlistUpdate", state.radio.playlist);
 
       res.json({
         message: "Song added to queue",
         song: songInfo.getInfo(),
-        position: this.radio.playlist.length + 1,
+        position: state.radio.playlist.length + 1,
       });
     } catch (error) {
       console.error("Queue error:", error);
@@ -47,9 +51,11 @@ class QueueController {
       });
     }
   };
+}
 
-  // Remove song from queue
-  removeFromQueue = (req, res) => {
+// Remove song from queue
+function removeFromQueue(state) {
+  return (req, res) => {
     try {
       const { index } = req.params;
       const queueIndex = parseInt(index);
@@ -57,36 +63,38 @@ class QueueController {
       if (
         isNaN(queueIndex) ||
         queueIndex < 0 ||
-        queueIndex >= this.radio.playlist.length
+        queueIndex >= state.radio.playlist.length
       ) {
         return res.status(400).json({ error: "Invalid queue index" });
       }
 
-      const removedSong = this.radio.playlist.splice(queueIndex, 1)[0];
+      const removedSong = state.radio.playlist.splice(queueIndex, 1)[0];
 
       // Notify all clients about playlist update
-      this.io.emit("playlistUpdate", this.radio.playlist);
+      state.io.emit("playlistUpdate", state.radio.playlist);
 
       res.json({
         message: "Song removed from queue",
         removedSong: removedSong.getInfo(),
-        newQueueLength: this.radio.playlist.length,
+        newQueueLength: state.radio.playlist.length,
       });
     } catch (error) {
       console.error("Error removing from queue:", error);
       res.status(500).json({ error: "Failed to remove song from queue" });
     }
   };
+}
 
-  // Get current playlist
-  getPlaylist = (req, res) => {
+// Get current playlist
+function getPlaylist(state) {
+  return (req, res) => {
     try {
-      const playlist = this.radio.playlist.map((song) => song.getInfo());
+      const playlist = state.radio.playlist.map((song) => song.getInfo());
       res.json({
         playlist,
         length: playlist.length,
-        currentSong: this.radio.currentSong
-          ? this.radio.currentSong.getInfo()
+        currentSong: state.radio.currentSong
+          ? state.radio.currentSong.getInfo()
           : null,
       });
     } catch (error) {
@@ -94,14 +102,16 @@ class QueueController {
       res.status(500).json({ error: "Failed to get playlist" });
     }
   };
+}
 
-  // Clear the entire playlist
-  clearPlaylist = (req, res) => {
+// Clear the entire playlist
+function clearPlaylist(state) {
+  return (req, res) => {
     try {
-      this.radio.playlist = [];
+      state.radio.playlist = [];
 
       // Notify all clients about playlist update
-      this.io.emit("playlistUpdate", this.radio.playlist);
+      state.io.emit("playlistUpdate", state.radio.playlist);
 
       res.json({
         message: "Playlist cleared",
@@ -114,4 +124,56 @@ class QueueController {
   };
 }
 
-module.exports = QueueController;
+// Play the next song in the queue
+function playNextSong(state) {
+  const nextSong = Radio.getNextSong(state.radio);
+  if (nextSong) {
+    Radio.setCurrentSong(state.radio, nextSong);
+    Radio.startProgressTracking(state.radio, state.io);
+
+    state.io.emit("nowPlaying", {
+      song: nextSong.getInfo(),
+      startTime: state.radio.startTime,
+    });
+
+    // Set up auto-advance when song ends
+    const duration = nextSong.duration * 1000;
+    setTimeout(() => {
+      if (Radio.hasSongFinished(state.radio)) {
+        if (Radio.hasNextSong(state.radio)) {
+          playNextSong(state);
+        } else {
+          Radio.stop(state.radio);
+          state.io.emit("radioStopped");
+        }
+      }
+    }, duration + 1000);
+  }
+}
+
+// Create a functional queue controller
+function createQueueController(io) {
+  const state = createQueueControllerState(io);
+
+  return {
+    // State access
+    state,
+
+    // API endpoints
+    addToQueue: addToQueue(state),
+    removeFromQueue: removeFromQueue(state),
+    getPlaylist: getPlaylist(state),
+    clearPlaylist: clearPlaylist(state),
+  };
+}
+
+module.exports = {
+  createQueueController,
+  // Export individual functions for testing or advanced usage
+  createQueueControllerState,
+  addToQueue,
+  removeFromQueue,
+  getPlaylist,
+  clearPlaylist,
+  playNextSong,
+};

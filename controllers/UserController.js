@@ -1,16 +1,18 @@
-const User = require("../models/User");
+const UserService = require("../services/UserService");
 const Chat = require("../models/Chat");
 
-class UserController {
-  constructor(io) {
-    this.io = io;
-    this.users = new Map(); // Store users by ID
-    this.socketToUser = new Map(); // Map socket IDs to user IDs
-    this.chat = new Chat(); // Chat instance for message persistence
-  }
+// State management functions
+function createUserControllerState(io) {
+  return {
+    io,
+    socketToUser: new Map(), // Map socket IDs to user IDs
+    chat: Chat.createChat(), // Chat instance for message persistence
+  };
+}
 
-  // Register a new user
-  registerUser = async (req, res) => {
+// Register a new user
+function registerUser(state) {
+  return async (req, res) => {
     try {
       const { name, avatarId } = req.body;
 
@@ -30,7 +32,7 @@ class UserController {
       }
 
       // Check for duplicate names (optional - you might want to allow duplicates)
-      const existingUser = Array.from(this.users.values()).find(
+      const existingUser = UserService.getAllUsers().find(
         (user) => user.name.toLowerCase() === name.trim().toLowerCase()
       );
 
@@ -41,111 +43,146 @@ class UserController {
         });
       }
 
-      // Create new user
+      // Create new user with generated ID
       const userData = {
+        id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         name: name.trim(),
         avatarId: avatarId,
       };
 
-      const user = new User(userData);
-
-      // Validate user data
-      if (!user.isValid()) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid user data",
-        });
-      }
-
-      // Store user
-      this.users.set(user.id, user);
+      const user = UserService.createUser(userData);
 
       console.log(`👤 User registered: ${user.name} (ID: ${user.id})`);
 
       // Broadcast new user joined (without socket connection yet)
-      this.io.emit("userJoined", user.getPublicInfo());
-      this.io.emit("usersUpdate", this.getOnlineUsers());
+      state.io.emit("userJoined", {
+        id: user.id,
+        name: user.name,
+        avatarId: user.avatarId,
+        isOnline: user.isOnline,
+        joinedAt: user.joinedAt,
+      });
+      state.io.emit("usersUpdate", getOnlineUsers(state));
 
       res.json({
         success: true,
-        user: user.getInfo(),
+        user: {
+          id: user.id,
+          name: user.name,
+          avatarId: user.avatarId,
+          isOnline: user.isOnline,
+          joinedAt: user.joinedAt,
+          lastActivity: user.lastActivity,
+        },
         message: "User registered successfully",
       });
     } catch (error) {
       console.error("Error registering user:", error);
       res.status(500).json({
         success: false,
-        error: "Internal server error",
+        error: error.message || "Internal server error",
       });
     }
   };
+}
 
-  // Connect a registered user via socket
-  connectUser(userId, socketId) {
-    const user = this.users.get(userId);
+// Connect a registered user via socket
+function connectUser(state, userId, socketId) {
+  const user = UserService.getUserById(userId);
+  if (user) {
+    UserService.updateSocketId(userId, socketId);
+    UserService.setUserOnlineStatus(userId, true);
+    state.socketToUser.set(socketId, userId);
+
+    console.log(`🔌 User connected: ${user.name} (Socket: ${socketId})`);
+
+    // Get updated user data
+    const updatedUser = UserService.getUserById(userId);
+
+    // Broadcast user came online
+    state.io.emit("userOnline", {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      avatarId: updatedUser.avatarId,
+      isOnline: updatedUser.isOnline,
+      joinedAt: updatedUser.joinedAt,
+    });
+    state.io.emit("usersUpdate", getOnlineUsers(state));
+
+    return updatedUser;
+  }
+  return null;
+}
+
+// Disconnect a user
+function disconnectUser(state, socketId) {
+  const userId = state.socketToUser.get(socketId);
+  if (userId) {
+    const user = UserService.getUserById(userId);
     if (user) {
-      user.updateSocketId(socketId);
-      this.socketToUser.set(socketId, userId);
+      UserService.setUserOnlineStatus(userId, false);
+      state.socketToUser.delete(socketId);
 
-      console.log(`🔌 User connected: ${user.name} (Socket: ${socketId})`);
+      console.log(`🔌 User disconnected: ${user.name} (Socket: ${socketId})`);
 
-      // Broadcast user came online
-      this.io.emit("userOnline", user.getPublicInfo());
-      this.io.emit("usersUpdate", this.getOnlineUsers());
+      // Get updated user data
+      const updatedUser = UserService.getUserById(userId);
 
-      return user;
+      // Broadcast user went offline
+      state.io.emit("userOffline", {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        avatarId: updatedUser.avatarId,
+        isOnline: updatedUser.isOnline,
+        joinedAt: updatedUser.joinedAt,
+      });
+      state.io.emit("usersUpdate", getOnlineUsers(state));
+
+      return updatedUser;
     }
-    return null;
   }
+  return null;
+}
 
-  // Disconnect a user
-  disconnectUser(socketId) {
-    const userId = this.socketToUser.get(socketId);
-    if (userId) {
-      const user = this.users.get(userId);
-      if (user) {
-        user.setOffline();
-        this.socketToUser.delete(socketId);
+// Get user by socket ID
+function getUserBySocketId(state, socketId) {
+  const userId = state.socketToUser.get(socketId);
+  return userId ? UserService.getUserById(userId) : null;
+}
 
-        console.log(`🔌 User disconnected: ${user.name} (Socket: ${socketId})`);
+// Get user by ID
+function getUserById(state, userId) {
+  return UserService.getUserById(userId);
+}
 
-        // Broadcast user went offline
-        this.io.emit("userOffline", user.getPublicInfo());
-        this.io.emit("usersUpdate", this.getOnlineUsers());
+// Get all online users
+function getOnlineUsers(state) {
+  return UserService.getOnlineUsers().map((user) => ({
+    id: user.id,
+    name: user.name,
+    avatarId: user.avatarId,
+    isOnline: user.isOnline,
+    joinedAt: user.joinedAt,
+  }));
+}
 
-        return user;
-      }
-    }
-    return null;
-  }
+// Get all users (including offline)
+function getAllUsers(state) {
+  return UserService.getAllUsers().map((user) => ({
+    id: user.id,
+    name: user.name,
+    avatarId: user.avatarId,
+    isOnline: user.isOnline,
+    joinedAt: user.joinedAt,
+    lastActivity: user.lastActivity,
+  }));
+}
 
-  // Get user by socket ID
-  getUserBySocketId(socketId) {
-    const userId = this.socketToUser.get(socketId);
-    return userId ? this.users.get(userId) : null;
-  }
-
-  // Get user by ID
-  getUserById(userId) {
-    return this.users.get(userId);
-  }
-
-  // Get all online users
-  getOnlineUsers() {
-    return Array.from(this.users.values())
-      .filter((user) => user.isOnline)
-      .map((user) => user.getPublicInfo());
-  }
-
-  // Get all users (including offline)
-  getAllUsers() {
-    return Array.from(this.users.values()).map((user) => user.getInfo());
-  }
-
-  // API endpoint to get online users
-  getOnlineUsersEndpoint = async (req, res) => {
+// API endpoint to get online users
+function getOnlineUsersEndpoint(state) {
+  return async (req, res) => {
     try {
-      const onlineUsers = this.getOnlineUsers();
+      const onlineUsers = getOnlineUsers(state);
       res.json({
         success: true,
         users: onlineUsers,
@@ -159,12 +196,14 @@ class UserController {
       });
     }
   };
+}
 
-  // API endpoint to get user info
-  getUserInfo = async (req, res) => {
+// API endpoint to get user info
+function getUserInfoEndpoint(state) {
+  return async (req, res) => {
     try {
       const { userId } = req.params;
-      const user = this.getUserById(userId);
+      const user = getUserById(state, userId);
 
       if (!user) {
         return res.status(404).json({
@@ -175,7 +214,14 @@ class UserController {
 
       res.json({
         success: true,
-        user: user.getInfo(),
+        user: {
+          id: user.id,
+          name: user.name,
+          avatarId: user.avatarId,
+          isOnline: user.isOnline,
+          joinedAt: user.joinedAt,
+          lastActivity: user.lastActivity,
+        },
       });
     } catch (error) {
       console.error("Error getting user info:", error);
@@ -185,62 +231,55 @@ class UserController {
       });
     }
   };
+}
 
-  // Update user activity (called when user performs actions)
-  updateUserActivity(socketId) {
-    const user = this.getUserBySocketId(socketId);
-    if (user) {
-      user.updateActivity();
-    }
+// Update user activity (called when user performs actions)
+function updateUserActivity(state, socketId) {
+  const userId = state.socketToUser.get(socketId);
+  if (userId) {
+    UserService.updateLastActivity(userId);
+  }
+}
+
+// Cleanup inactive users (optional - could be called periodically)
+function cleanupInactiveUsers(state, maxInactiveHours = 24) {
+  const inactiveThresholdMs = maxInactiveHours * 60 * 60 * 1000;
+  const removedUserIds = UserService.removeInactiveUsers(inactiveThresholdMs);
+
+  if (removedUserIds.length > 0) {
+    console.log(`🧹 Cleaned up ${removedUserIds.length} inactive users`);
   }
 
-  // Cleanup inactive users (optional - could be called periodically)
-  cleanupInactiveUsers(maxInactiveHours = 24) {
-    const cutoffTime = new Date(Date.now() - maxInactiveHours * 60 * 60 * 1000);
-    let cleanedCount = 0;
+  return removedUserIds.length;
+}
 
-    for (const [userId, user] of this.users.entries()) {
-      if (!user.isOnline && user.lastActivity < cutoffTime) {
-        this.users.delete(userId);
-        cleanedCount++;
-      }
-    }
+// Get user stats
+function getUserStats(state) {
+  const stats = UserService.getStatistics();
 
-    if (cleanedCount > 0) {
-      console.log(`🧹 Cleaned up ${cleanedCount} inactive users`);
-    }
+  return {
+    total: stats.totalUsers,
+    online: stats.onlineUsers,
+    offline: stats.offlineUsers,
+  };
+}
 
-    return cleanedCount;
-  }
+// Add message to chat history
+function addChatMessage(state, messageData) {
+  return Chat.addMessage(state.chat, messageData);
+}
 
-  // Get user stats
-  getUserStats() {
-    const totalUsers = this.users.size;
-    const onlineUsers = this.getOnlineUsers().length;
-    const offlineUsers = totalUsers - onlineUsers;
+// Get chat history
+function getChatHistory(state, count = 50) {
+  return Chat.getRecentMessages(state.chat, count);
+}
 
-    return {
-      total: totalUsers,
-      online: onlineUsers,
-      offline: offlineUsers,
-    };
-  }
-
-  // Add message to chat history
-  addChatMessage(messageData) {
-    return this.chat.addMessage(messageData);
-  }
-
-  // Get chat history
-  getChatHistory(count = 50) {
-    return this.chat.getRecentMessages(count);
-  }
-
-  // API endpoint to get chat history
-  getChatHistoryEndpoint = async (req, res) => {
+// API endpoint to get chat history
+function getChatHistoryEndpoint(state) {
+  return async (req, res) => {
     try {
       const count = parseInt(req.query.count) || 50;
-      const messages = this.getChatHistory(count);
+      const messages = getChatHistory(state, count);
 
       res.json({
         success: true,
@@ -257,4 +296,59 @@ class UserController {
   };
 }
 
-module.exports = UserController;
+// Create a functional user controller
+function createUserController(io) {
+  const state = createUserControllerState(io);
+
+  return {
+    // State access
+    state,
+
+    // Core user management
+    registerUser: registerUser(state),
+    connectUser: (userId, socketId) => connectUser(state, userId, socketId),
+    disconnectUser: (socketId) => disconnectUser(state, socketId),
+
+    // User queries
+    getUserBySocketId: (socketId) => getUserBySocketId(state, socketId),
+    getUserById: (userId) => getUserById(state, userId),
+    getOnlineUsers: () => getOnlineUsers(state),
+    getAllUsers: () => getAllUsers(state),
+
+    // API endpoints
+    getOnlineUsersEndpoint: getOnlineUsersEndpoint(state),
+    getUserInfo: getUserInfoEndpoint(state),
+    getChatHistoryEndpoint: getChatHistoryEndpoint(state),
+
+    // Utility functions
+    updateUserActivity: (socketId) => updateUserActivity(state, socketId),
+    cleanupInactiveUsers: (maxInactiveHours) =>
+      cleanupInactiveUsers(state, maxInactiveHours),
+    getUserStats: () => getUserStats(state),
+
+    // Chat functions
+    addChatMessage: (messageData) => addChatMessage(state, messageData),
+    getChatHistory: (count) => getChatHistory(state, count),
+  };
+}
+
+module.exports = {
+  createUserController,
+  // Export individual functions for testing or advanced usage
+  createUserControllerState,
+  registerUser,
+  connectUser,
+  disconnectUser,
+  getUserBySocketId,
+  getUserById,
+  getOnlineUsers,
+  getAllUsers,
+  getOnlineUsersEndpoint,
+  getUserInfoEndpoint,
+  updateUserActivity,
+  cleanupInactiveUsers,
+  getUserStats,
+  addChatMessage,
+  getChatHistory,
+  getChatHistoryEndpoint,
+};

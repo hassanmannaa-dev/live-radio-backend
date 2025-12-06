@@ -1,40 +1,12 @@
-function fromYouTubeData(data) {
-  return {
-    id: data.id,
-    title: data.title,
-    artist: data.artist || data.uploader,
-    album: data.album,
-    duration: data.duration,
-    thumbnail: data.thumbnail,
-    url: data.original_url,
-    playlist: data.playlist,
-  };
-}
-
-function getInfo(song) {
-  return {
-    id: song.id,
-    title: song.title,
-    artist: song.artist,
-    album: song.album,
-    duration: song.duration,
-    thumbnail: song.thumbnail,
-    url: song.url,
-    playlist: song.playlist,
-  };
-}
-
-function getYouTubeUrl(song) {
-  return `https://music.youtube.com/watch?v=${song.id}`;
-}
-
-function isValid(song) {
-  return song.id && song.title;
-}
-
-module.exports = {
-  fromYouTubeData,
-  getInfo,
-  getYouTubeUrl,
-  isValid,
+const SongModel = {
+  id: null, // Unique identifier (string)
+  title: null, // Song title (string)
+  artist: null, // Artist name (string)
+  album: null, // Album name (string)
+  duration: null, // Song duration in seconds (number)
+  thumbnail: null, // Thumbnail URL (string)
+  url: null, // Original URL (string)
+  playlist: null, // Playlist identifier (string)
 };
+
+module.exports = SongModel;

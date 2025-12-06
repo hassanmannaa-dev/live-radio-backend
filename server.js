@@ -1,101 +1,85 @@
 require("dotenv").config();
 
-// Import configuration and middleware
-const { createAppServer, setupMiddleware } = require("./config/server");
 const { errorHandler, notFoundHandler } = require("./middleware/errorHandler");
 const setupSocketHandlers = require("./middleware/socketHandler");
-const setupRoutes = require("./routes");
-
-// Import controllers
-const RadioController = require("./controllers/RadioController");
-const QueueController = require("./controllers/QueueController");
-const SearchController = require("./controllers/SearchController");
-const UserController = require("./controllers/UserController");
-
-// Server configuration
+const { createUserController } = require("./controllers/UserController");
+const { createQueueController } = require("./controllers/QueueController");
+const createUserRoutes = require("./routes/userRoutes");
+const createQueueRoutes = require("./routes/queueRoutes");
+const searchRoutes = require("./routes/searchRoutes");
+const cors = require("cors");
+const morgan = require("morgan");
+const express = require("express");
+const { createServer } = require("http");
+const { Server } = require("socket.io");
 const PORT = process.env.PORT || 5000;
 
-async function startServer() {
-  try {
-    // Create Express app and HTTP server with Socket.IO
-    const { app, server, io } = createAppServer();
+const app = express();
+const server = createServer(app);
 
-    // Setup middleware
-    setupMiddleware(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+  },
+});
 
-    // Initialize controllers
-    const radioController = new RadioController(io);
-    const queueController = new QueueController(radioController, io);
-    const searchController = new SearchController();
-    const userController = new UserController(io);
+app.use(cors());
 
-    const controllers = {
-      radioController,
-      queueController,
-      searchController,
-      userController,
-    };
+app.use(morgan("combined"));
 
-    // Setup routes
-    setupRoutes(app, controllers);
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-    // Setup Socket.IO handlers
-    setupSocketHandlers(io, radioController, userController);
+// Create controllers with io for real-time features
+const userController = createUserController(io);
+const queueController = createQueueController(io);
 
-    // Error handling middleware (must be last)
-    app.use(errorHandler);
-    app.use("*", notFoundHandler);
+setupSocketHandlers(io, userController);
 
-    // Start server
-    server.listen(PORT, () => {
-      console.log("🚀 ================================");
-      console.log(`🚀 Live Radio Backend Server v2.0.0`);
-      console.log(`🚀 Port: ${PORT}`);
-      console.log(`🚀 Environment: ${process.env.NODE_ENV || "development"}`);
-      console.log(`🚀 Architecture: MVC`);
-      console.log("🚀 ================================");
-      console.log("📡 Live Radio Station ready");
-      console.log("🎵 WebSocket enabled for real-time sync");
-      console.log("🔗 API Endpoints:");
-      console.log("   - GET  /api/radio/status");
-      console.log("   - GET  /api/radio/stream");
-      console.log("   - POST /api/queue");
-      console.log("   - GET  /api/queue");
-      console.log("   - GET  /api/search");
-      console.log("   - POST /api/user/register");
-      console.log("   - POST /api/user/setup");
-      console.log("   - GET  /api/user/online");
-      console.log("   - GET  /health");
-      console.log("🚀 ================================");
-    });
+app.use("/api/user", createUserRoutes(userController));
+app.use("/api/queue", createQueueRoutes(queueController));
+app.use("/api/search", searchRoutes);
 
-    // Graceful shutdown
-    process.on("SIGTERM", () => {
-      console.log("🛑 SIGTERM received, shutting down gracefully");
-      radioController.stop();
-      server.close(() => {
-        console.log("🛑 Server closed");
-        process.exit(0);
-      });
-    });
+app.use("*", notFoundHandler);
+app.use(errorHandler);
 
-    process.on("SIGINT", () => {
-      console.log("🛑 SIGINT received, shutting down gracefully");
-      radioController.stop();
-      server.close(() => {
-        console.log("🛑 Server closed");
-        process.exit(0);
-      });
-    });
+server.listen(PORT, () => {
+  console.log("🚀 ================================");
+  console.log(`🚀 Live Radio Backend Server v2.0.0`);
+  console.log(`🚀 Port: ${PORT}`);
+  console.log(`🚀 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🚀 Architecture: MVC`);
+  console.log("🚀 ================================");
+  console.log("📡 Live Radio Station ready");
+  console.log("🎵 WebSocket enabled for real-time sync");
+  console.log("🔗 API Endpoints:");
+  console.log("   - POST /api/queue");
+  console.log("   - GET  /api/queue");
+  console.log("   - GET  /api/search");
+  console.log("   - POST /api/user/register");
+  console.log("   - GET  /api/user/chat/history");
+  console.log("   - GET  /api/user/online");
+  console.log("   - GET  /health");
+  console.log("🚀 ================================");
+});
 
-    return server;
-  } catch (error) {
-    console.error("❌ Failed to start server:", error);
-    process.exit(1);
-  }
-}
+process.on("SIGTERM", () => {
+  console.log("🛑 SIGTERM received, shutting down gracefully");
+  server.close(() => {
+    console.log("🛑 Server closed");
+    process.exit(0);
+  });
+});
 
-// Handle uncaught exceptions
+process.on("SIGINT", () => {
+  console.log("🛑 SIGINT received, shutting down gracefully");
+  server.close(() => {
+    console.log("🛑 Server closed");
+    process.exit(0);
+  });
+});
+
 process.on("uncaughtException", (error) => {
   console.error("❌ Uncaught Exception:", error);
   process.exit(1);
@@ -105,10 +89,3 @@ process.on("unhandledRejection", (reason, promise) => {
   console.error("❌ Unhandled Rejection at:", promise, "reason:", reason);
   process.exit(1);
 });
-
-// Start the server
-if (require.main === module) {
-  startServer();
-}
-
-module.exports = startServer;
