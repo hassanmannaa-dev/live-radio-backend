@@ -26,9 +26,11 @@ class RadioService {
 
     if (stream) {
       stream.on('close', () => {
+        console.log('Stream closed, isPlaying:', this.radio.isPlaying, 'hasNext:', this.queueService.hasNext());
         if (this.radio.isPlaying && this.queueService.hasNext()) {
           this.playNext();
         } else if (!this.queueService.hasNext()) {
+          console.log('No next song, stopping');
           this.stop();
         }
         if (this.onSongEnd) {

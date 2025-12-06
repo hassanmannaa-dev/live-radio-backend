@@ -18,6 +18,7 @@ class RadioController {
 
   stream = async (req, res, next) => {
     try {
+      console.log('Stream requested, isPlaying:', this.radioService.isPlaying());
       if (!this.radioService.isPlaying()) {
         return res.status(404).json({
           success: false,
@@ -29,7 +30,10 @@ class RadioController {
         'Content-Type': 'audio/mpeg',
         'Transfer-Encoding': 'chunked',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': process.env.FRONTEND_URL || 'http://localhost:3000',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Credentials': 'true'
       });
 
       const listenerId = uuidv4();

@@ -2,7 +2,8 @@ const { spawn } = require('child_process');
 
 class StreamingService {
   constructor() {
-    this.currentStream = null;
+    this.ytdlpProcess = null;
+    this.ffmpegProcess = null;
     this.streamListeners = new Set();
   }
 
@@ -11,7 +12,8 @@ class StreamingService {
 
     const youtubeUrl = song.getYouTubeUrl();
 
-    const args = [
+    // yt-dlp outputs raw audio to stdout
+    const ytdlpArgs = [
       '-f', 'bestaudio/best',
       '--no-playlist',
       '-o', '-',
@@ -19,42 +21,79 @@ class StreamingService {
       youtubeUrl
     ];
 
-    this.currentStream = spawn('yt-dlp', args);
+    // ffmpeg converts to mp3 for browser compatibility
+    const ffmpegArgs = [
+      '-i', 'pipe:0',        // Read from stdin
+      '-f', 'mp3',           // Output format
+      '-acodec', 'libmp3lame',
+      '-ab', '128k',         // Bitrate
+      '-ar', '44100',        // Sample rate
+      'pipe:1'               // Output to stdout
+    ];
 
-    this.currentStream.on('error', (error) => {
-      console.error('Stream error:', error.message);
-      this.currentStream = null;
+    this.ytdlpProcess = spawn('yt-dlp', ytdlpArgs);
+    this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+
+    // Pipe yt-dlp output to ffmpeg input
+    this.ytdlpProcess.stdout.pipe(this.ffmpegProcess.stdin);
+
+    this.ytdlpProcess.on('error', (error) => {
+      console.error('yt-dlp error:', error.message);
     });
 
-    this.currentStream.on('close', () => {
-      this.currentStream = null;
+    this.ytdlpProcess.stderr.on('data', (data) => {
+      console.error('yt-dlp stderr:', data.toString());
     });
 
-    return this.currentStream;
+    this.ffmpegProcess.on('error', (error) => {
+      console.error('ffmpeg error:', error.message);
+    });
+
+    this.ffmpegProcess.stderr.on('data', (data) => {
+      // ffmpeg outputs progress to stderr, uncomment to debug
+      // console.error('ffmpeg stderr:', data.toString());
+    });
+
+    this.ytdlpProcess.on('close', (code) => {
+      console.log('yt-dlp closed with code:', code);
+    });
+
+    this.ffmpegProcess.on('close', (code) => {
+      console.log('ffmpeg closed with code:', code);
+      this.ytdlpProcess = null;
+      this.ffmpegProcess = null;
+    });
+
+    // Return ffmpeg process so we can pipe its stdout to responses
+    return this.ffmpegProcess;
   }
 
   stopStream() {
-    if (this.currentStream) {
-      this.currentStream.kill('SIGTERM');
-      this.currentStream = null;
+    if (this.ytdlpProcess) {
+      this.ytdlpProcess.kill('SIGTERM');
+      this.ytdlpProcess = null;
+    }
+    if (this.ffmpegProcess) {
+      this.ffmpegProcess.kill('SIGTERM');
+      this.ffmpegProcess = null;
     }
   }
 
   isStreaming() {
-    return this.currentStream !== null && !this.currentStream.killed;
+    return this.ffmpegProcess !== null && !this.ffmpegProcess.killed;
   }
 
   pipeToResponse(res) {
-    if (!this.currentStream || !this.currentStream.stdout) {
+    if (!this.ffmpegProcess || !this.ffmpegProcess.stdout) {
       return false;
     }
 
-    this.currentStream.stdout.pipe(res);
+    this.ffmpegProcess.stdout.pipe(res);
     return true;
   }
 
   getCurrentStream() {
-    return this.currentStream;
+    return this.ffmpegProcess;
   }
 
   addListener(id) {
