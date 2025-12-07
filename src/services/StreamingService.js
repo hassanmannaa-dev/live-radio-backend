@@ -20,7 +20,6 @@ class StreamingService {
     // Reset buffer for new song
     this.audioBuffer = [];
     this.isBuffering = true;
-    this.songStartTime = Date.now();
 
     // yt-dlp outputs raw audio to stdout
     const ytdlpArgs = [
@@ -47,49 +46,75 @@ class StreamingService {
     // Pipe yt-dlp output to ffmpeg input
     this.ytdlpProcess.stdout.pipe(this.ffmpegProcess.stdin);
 
-    // Buffer the audio data and broadcast to all connected clients
-    this.ffmpegProcess.stdout.on('data', (chunk) => {
-      // Store chunk in buffer
-      this.audioBuffer.push(chunk);
+    // Wait for first audio chunk before resolving
+    return new Promise((resolve, reject) => {
+      let resolved = false;
 
-      // Send to all connected clients
-      for (const res of this.activeResponses) {
-        if (!res.writableEnded) {
-          res.write(chunk);
+      // Buffer the audio data and broadcast to all connected clients
+      this.ffmpegProcess.stdout.on('data', (chunk) => {
+        // Store chunk in buffer
+        this.audioBuffer.push(chunk);
+
+        // Resolve on first chunk - audio is ready
+        if (!resolved) {
+          resolved = true;
+          this.songStartTime = Date.now();
+          console.log('First audio chunk received, stream ready');
+          resolve(this.ffmpegProcess);
         }
-      }
-    });
 
-    this.ytdlpProcess.on('error', (error) => {
-      console.error('yt-dlp error:', error.message);
-    });
+        // Send to all connected clients
+        for (const res of this.activeResponses) {
+          if (!res.writableEnded) {
+            res.write(chunk);
+          }
+        }
+      });
 
-    this.ytdlpProcess.stderr.on('data', (data) => {
-      console.error('yt-dlp stderr:', data.toString());
-    });
+      this.ytdlpProcess.on('error', (error) => {
+        console.error('yt-dlp error:', error.message);
+        if (!resolved) {
+          resolved = true;
+          reject(error);
+        }
+      });
 
-    this.ffmpegProcess.on('error', (error) => {
-      console.error('ffmpeg error:', error.message);
-    });
+      this.ytdlpProcess.stderr.on('data', (data) => {
+        console.error('yt-dlp stderr:', data.toString());
+      });
 
-    this.ffmpegProcess.stderr.on('data', (data) => {
-      // ffmpeg outputs progress to stderr, uncomment to debug
-      // console.error('ffmpeg stderr:', data.toString());
-    });
+      this.ffmpegProcess.on('error', (error) => {
+        console.error('ffmpeg error:', error.message);
+        if (!resolved) {
+          resolved = true;
+          reject(error);
+        }
+      });
 
-    this.ytdlpProcess.on('close', (code) => {
-      console.log('yt-dlp closed with code:', code);
-    });
+      this.ffmpegProcess.stderr.on('data', (data) => {
+        // ffmpeg outputs progress to stderr, uncomment to debug
+        // console.error('ffmpeg stderr:', data.toString());
+      });
 
-    this.ffmpegProcess.on('close', (code) => {
-      console.log('ffmpeg closed with code:', code);
-      this.isBuffering = false;
-      this.ytdlpProcess = null;
-      this.ffmpegProcess = null;
-    });
+      this.ytdlpProcess.on('close', (code) => {
+        console.log('yt-dlp closed with code:', code);
+        if (!resolved && code !== 0) {
+          resolved = true;
+          reject(new Error(`yt-dlp exited with code ${code}`));
+        }
+      });
 
-    // Return ffmpeg process so we can pipe its stdout to responses
-    return this.ffmpegProcess;
+      this.ffmpegProcess.on('close', (code) => {
+        console.log('ffmpeg closed with code:', code);
+        this.isBuffering = false;
+        this.ytdlpProcess = null;
+        this.ffmpegProcess = null;
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(`ffmpeg exited with code ${code} before producing output`));
+        }
+      });
+    });
   }
 
   stopStream() {
