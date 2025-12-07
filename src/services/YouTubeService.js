@@ -88,6 +88,7 @@ class YouTubeService {
         '-j',
         '--no-playlist',
         '--no-warnings',
+        '--skip-download',
         ...YouTubeService.getCookiesArgs(),
         url
       ];
