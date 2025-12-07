@@ -93,14 +93,16 @@ class YouTubeService {
 
   static async getSongInfo(videoId) {
     return new Promise((resolve, reject) => {
-      const url = `https://music.youtube.com/watch?v=${videoId}`;
+      // Use flat-playlist search by video ID (direct video fetch is blocked on cloud servers)
+      const searchUrl = `https://music.youtube.com/search?q=${videoId}&sp=EgWKAQIIAQ%3D%3D`;
 
       const args = [
         '-j',
-        '--no-playlist',
+        '--flat-playlist',
+        '--playlist-items', '1',
         '--no-warnings',
         ...YouTubeService.getCookiesArgs(),
-        url
+        searchUrl
       ];
 
       const ytdlp = spawn('yt-dlp', args);
@@ -117,20 +119,35 @@ class YouTubeService {
 
       ytdlp.on('close', (code) => {
         if (code !== 0 || !stdout.trim()) {
+          console.error('yt-dlp getSongInfo failed:', stderr);
           resolve(null);
           return;
         }
 
         try {
-          const data = JSON.parse(stdout.trim());
-          const song = Song.fromYouTubeData(data);
-          resolve(song);
+          const result = JSON.parse(stdout.trim());
+          if (result.id) {
+            const song = Song.fromYouTubeData({
+              id: result.id,
+              title: result.title || 'Unknown Title',
+              artist: result.uploader || result.channel || 'Unknown Artist',
+              album: result.album || null,
+              duration: result.duration || 0,
+              thumbnail: `https://i.ytimg.com/vi/${result.id}/hqdefault.jpg`,
+              url: result.url || result.webpage_url || `https://music.youtube.com/watch?v=${result.id}`
+            });
+            resolve(song);
+          } else {
+            resolve(null);
+          }
         } catch (error) {
+          console.error('Failed to parse getSongInfo output:', error.message);
           resolve(null);
         }
       });
 
-      ytdlp.on('error', () => {
+      ytdlp.on('error', (err) => {
+        console.error('yt-dlp getSongInfo spawn error:', err.message);
         resolve(null);
       });
     });
