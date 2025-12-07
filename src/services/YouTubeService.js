@@ -102,6 +102,7 @@ class YouTubeService {
         '--no-playlist',
         '--no-warnings',
         '--skip-download',
+        '--no-check-formats',
         ...YouTubeService.getCookiesArgs(),
         url
       ];
