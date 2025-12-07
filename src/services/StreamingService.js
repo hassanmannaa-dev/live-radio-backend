@@ -1,4 +1,32 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
+
+function initCookies() {
+  if (!fs.existsSync(COOKIES_PATH)) {
+    try {
+      let cookiesContent = null;
+
+      // Try base64 encoded version first
+      if (process.env.YOUTUBE_COOKIES_B64) {
+        cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
+        console.log('StreamingService: Decoded cookies from YOUTUBE_COOKIES_B64');
+      } else if (process.env.YOUTUBE_COOKIES) {
+        cookiesContent = process.env.YOUTUBE_COOKIES;
+        console.log('StreamingService: Using cookies from YOUTUBE_COOKIES');
+      }
+
+      if (cookiesContent) {
+        fs.writeFileSync(COOKIES_PATH, cookiesContent);
+        console.log('StreamingService: Created cookies.txt from environment variable');
+      }
+    } catch (err) {
+      console.error('StreamingService: Failed to write cookies file:', err.message);
+    }
+  }
+}
 
 class StreamingService {
   constructor() {
@@ -26,9 +54,17 @@ class StreamingService {
       '-f', 'bestaudio/best',
       '--no-playlist',
       '-o', '-',
-      '--no-warnings',
-      youtubeUrl
+      '--no-warnings'
     ];
+
+    // Add cookies if available
+    initCookies();
+    if (fs.existsSync(COOKIES_PATH)) {
+      ytdlpArgs.push('--cookies', COOKIES_PATH);
+      console.log('Using cookies file for streaming');
+    }
+
+    ytdlpArgs.push(youtubeUrl);
 
     // ffmpeg converts to mp3 for browser compatibility
     const ffmpegArgs = [
