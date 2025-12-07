@@ -27,11 +27,10 @@ class RadioService {
       return null;
     }
 
-    this.radio.setCurrentSong(nextSong);
-
     const stream = await this.streamingService.startStream(nextSong);
 
     if (stream) {
+      this.radio.setCurrentSong(nextSong);
       // Use song duration to determine when song ends, not stream close
       const durationMs = (nextSong.duration || 180) * 1000; // Default 3 min if no duration
       console.log(`Song started: ${nextSong.title}, duration: ${nextSong.duration}s`);
