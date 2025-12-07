@@ -1,7 +1,32 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 const Song = require('../models/Song');
 
+// Path to cookies file (in project root)
+const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
+
 class YouTubeService {
+  static initCookies() {
+    // If cookies file doesn't exist but env var does, create it
+    if (!fs.existsSync(COOKIES_PATH) && process.env.YOUTUBE_COOKIES) {
+      try {
+        fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES);
+        console.log('Created cookies.txt from environment variable');
+      } catch (err) {
+        console.error('Failed to write cookies file:', err.message);
+      }
+    }
+  }
+
+  static getCookiesArgs() {
+    YouTubeService.initCookies();
+    if (fs.existsSync(COOKIES_PATH)) {
+      return ['--cookies', COOKIES_PATH];
+    }
+    return [];
+  }
+
   static async searchSong(query) {
     return new Promise((resolve, reject) => {
       const encodedQuery = encodeURIComponent(query);
@@ -12,6 +37,7 @@ class YouTubeService {
         '--flat-playlist',
         '--playlist-items', '1',
         '--no-warnings',
+        ...YouTubeService.getCookiesArgs(),
         searchUrl
       ];
 
@@ -60,6 +86,7 @@ class YouTubeService {
         '-j',
         '--no-playlist',
         '--no-warnings',
+        ...YouTubeService.getCookiesArgs(),
         url
       ];
 
