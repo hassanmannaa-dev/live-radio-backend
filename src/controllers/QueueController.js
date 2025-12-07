@@ -1,4 +1,4 @@
-const YouTubeService = require('../services/YouTubeService');
+const Song = require('../models/Song');
 
 class QueueController {
   constructor(queueService, radioService, io) {
@@ -9,7 +9,7 @@ class QueueController {
 
   addSong = async (req, res, next) => {
     try {
-      const { id } = req.body;
+      const { id, title, artist, album, duration, thumbnail, url } = req.body;
 
       if (!id || typeof id !== 'string') {
         return res.status(400).json({
@@ -18,12 +18,21 @@ class QueueController {
         });
       }
 
-      const song = await YouTubeService.getSongInfo(id);
+      // Accept full song data from frontend (since getSongInfo is blocked on cloud servers)
+      const song = new Song({
+        id,
+        title: title || 'Unknown Title',
+        artist: artist || 'Unknown Artist',
+        album: album || null,
+        duration: duration || 0,
+        thumbnail: thumbnail || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        url: url || `https://music.youtube.com/watch?v=${id}`
+      });
 
-      if (!song) {
-        return res.status(404).json({
+      if (!song.id || !song.title) {
+        return res.status(400).json({
           success: false,
-          error: 'Could not find song information'
+          error: 'Song ID and title are required'
         });
       }
 
