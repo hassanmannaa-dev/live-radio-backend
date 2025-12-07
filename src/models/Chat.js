@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 
 class Chat {
-  constructor(maxMessages = 100) {
+  constructor(maxMessages = 1000) {
     this.messages = [];
     this.maxMessages = maxMessages;
   }
