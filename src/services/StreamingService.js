@@ -4,6 +4,17 @@ const fs = require('fs');
 
 const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
 
+function initCookies() {
+  if (!fs.existsSync(COOKIES_PATH) && process.env.YOUTUBE_COOKIES) {
+    try {
+      fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES);
+      console.log('StreamingService: Created cookies.txt from environment variable');
+    } catch (err) {
+      console.error('StreamingService: Failed to write cookies file:', err.message);
+    }
+  }
+}
+
 class StreamingService {
   constructor() {
     this.ytdlpProcess = null;
@@ -33,9 +44,11 @@ class StreamingService {
       '--no-warnings'
     ];
 
-    // Add cookies if available
+    // Initialize and add cookies if available
+    initCookies();
     if (fs.existsSync(COOKIES_PATH)) {
       ytdlpArgs.push('--cookies', COOKIES_PATH);
+      console.log('Using cookies file for streaming');
     }
 
     ytdlpArgs.push(youtubeUrl);
