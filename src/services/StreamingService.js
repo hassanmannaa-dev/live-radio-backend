@@ -1,4 +1,31 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
+
+// Only modify PATH on Heroku (detected by DYNO env var)
+const YTDLP_ENV = process.env.DYNO
+  ? { ...process.env, PATH: `/app/.heroku/node/bin:${process.env.PATH || ''}` }
+  : process.env;
+
+function initCookies() {
+  console.log('[StreamingService] initCookies called');
+  console.log('[StreamingService] COOKIES_PATH:', COOKIES_PATH);
+  console.log('[StreamingService] cookies.txt exists:', fs.existsSync(COOKIES_PATH));
+  console.log('[StreamingService] YOUTUBE_COOKIES_B64 set:', !!process.env.YOUTUBE_COOKIES_B64);
+
+  if (!fs.existsSync(COOKIES_PATH) && process.env.YOUTUBE_COOKIES_B64) {
+    try {
+      const content = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
+      fs.writeFileSync(COOKIES_PATH, content);
+      console.log('[StreamingService] Created cookies.txt from YOUTUBE_COOKIES_B64');
+      console.log('[StreamingService] Cookie file size:', content.length, 'bytes');
+    } catch (err) {
+      console.error('[StreamingService] Failed to write cookies:', err.message);
+    }
+  }
+}
 
 class StreamingService {
   constructor() {
@@ -13,22 +40,39 @@ class StreamingService {
   }
 
   async startStream(song) {
+    console.log('[StreamingService] startStream called for song:', song.title);
     this.stopStream();
 
     const youtubeUrl = song.getYouTubeUrl();
+    console.log('[StreamingService] YouTube URL:', youtubeUrl);
 
     // Reset buffer for new song
     this.audioBuffer = [];
     this.isBuffering = true;
+
+    // Initialize cookies from env if needed
+    initCookies();
 
     // yt-dlp outputs raw audio to stdout
     const ytdlpArgs = [
       '-f', 'bestaudio/best',
       '--no-playlist',
       '-o', '-',
-      '--no-warnings',
-      youtubeUrl
+      '--no-warnings'
     ];
+
+    // Add cookies if available
+    if (fs.existsSync(COOKIES_PATH)) {
+      ytdlpArgs.push('--cookies', COOKIES_PATH);
+      console.log('[StreamingService] Added cookies to yt-dlp args');
+    } else {
+      console.log('[StreamingService] No cookies file found');
+    }
+
+    ytdlpArgs.push(youtubeUrl);
+
+    console.log('[StreamingService] yt-dlp args:', ytdlpArgs.join(' '));
+    console.log('[StreamingService] PATH in env:', YTDLP_ENV.PATH?.substring(0, 100) + '...');
 
     // ffmpeg converts to mp3 for browser compatibility
     const ffmpegArgs = [
@@ -40,8 +84,10 @@ class StreamingService {
       'pipe:1'               // Output to stdout
     ];
 
-    this.ytdlpProcess = spawn('yt-dlp', ytdlpArgs);
+    console.log('[StreamingService] Spawning yt-dlp and ffmpeg...');
+    this.ytdlpProcess = spawn('yt-dlp', ytdlpArgs, { env: YTDLP_ENV });
     this.ffmpegProcess = spawn('ffmpeg', ffmpegArgs);
+    console.log('[StreamingService] Processes spawned, yt-dlp pid:', this.ytdlpProcess.pid, 'ffmpeg pid:', this.ffmpegProcess.pid);
 
     // Pipe yt-dlp output to ffmpeg input
     this.ytdlpProcess.stdout.pipe(this.ffmpegProcess.stdin);
@@ -71,8 +117,10 @@ class StreamingService {
         }
       });
 
+      let stderrData = '';
+
       this.ytdlpProcess.on('error', (error) => {
-        console.error('yt-dlp error:', error.message);
+        console.error('[StreamingService] yt-dlp spawn error:', error.message);
         if (!resolved) {
           resolved = true;
           reject(error);
@@ -80,11 +128,12 @@ class StreamingService {
       });
 
       this.ytdlpProcess.stderr.on('data', (data) => {
-        console.error('yt-dlp stderr:', data.toString());
+        stderrData += data.toString();
+        console.error('[StreamingService] yt-dlp stderr:', data.toString().trim());
       });
 
       this.ffmpegProcess.on('error', (error) => {
-        console.error('ffmpeg error:', error.message);
+        console.error('[StreamingService] ffmpeg spawn error:', error.message);
         if (!resolved) {
           resolved = true;
           reject(error);
@@ -93,11 +142,14 @@ class StreamingService {
 
       this.ffmpegProcess.stderr.on('data', (data) => {
         // ffmpeg outputs progress to stderr, uncomment to debug
-        // console.error('ffmpeg stderr:', data.toString());
+        // console.error('[StreamingService] ffmpeg stderr:', data.toString());
       });
 
       this.ytdlpProcess.on('close', (code) => {
-        console.log('yt-dlp closed with code:', code);
+        console.log('[StreamingService] yt-dlp closed with code:', code);
+        if (stderrData) {
+          console.log('[StreamingService] yt-dlp full stderr:', stderrData);
+        }
         if (!resolved && code !== 0) {
           resolved = true;
           reject(new Error(`yt-dlp exited with code ${code}`));
@@ -105,7 +157,7 @@ class StreamingService {
       });
 
       this.ffmpegProcess.on('close', (code) => {
-        console.log('ffmpeg closed with code:', code);
+        console.log('[StreamingService] ffmpeg closed with code:', code);
         this.isBuffering = false;
         this.ytdlpProcess = null;
         this.ffmpegProcess = null;
