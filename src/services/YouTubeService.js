@@ -55,6 +55,8 @@ class YouTubeService {
 
       ytdlp.on('close', async (code) => {
         if (code !== 0 || !stdout.trim()) {
+          console.error('yt-dlp search failed with code:', code);
+          console.error('yt-dlp stderr:', stderr);
           resolve(null);
           return;
         }
@@ -104,6 +106,8 @@ class YouTubeService {
 
       ytdlp.on('close', (code) => {
         if (code !== 0 || !stdout.trim()) {
+          console.error('yt-dlp getSongInfo failed with code:', code);
+          console.error('yt-dlp stderr:', stderr);
           resolve(null);
           return;
         }
@@ -113,6 +117,7 @@ class YouTubeService {
           const song = Song.fromYouTubeData(data);
           resolve(song);
         } catch (error) {
+          console.error('Failed to parse song info:', error.message);
           resolve(null);
         }
       });
