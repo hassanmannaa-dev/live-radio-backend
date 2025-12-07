@@ -5,10 +5,23 @@ const fs = require('fs');
 const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
 
 function initCookies() {
-  if (!fs.existsSync(COOKIES_PATH) && process.env.YOUTUBE_COOKIES) {
+  if (!fs.existsSync(COOKIES_PATH)) {
     try {
-      fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES);
-      console.log('StreamingService: Created cookies.txt from environment variable');
+      let cookiesContent = null;
+
+      // Try base64 encoded version first
+      if (process.env.YOUTUBE_COOKIES_B64) {
+        cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf8');
+        console.log('StreamingService: Decoded cookies from YOUTUBE_COOKIES_B64');
+      } else if (process.env.YOUTUBE_COOKIES) {
+        cookiesContent = process.env.YOUTUBE_COOKIES;
+        console.log('StreamingService: Using cookies from YOUTUBE_COOKIES');
+      }
+
+      if (cookiesContent) {
+        fs.writeFileSync(COOKIES_PATH, cookiesContent);
+        console.log('StreamingService: Created cookies.txt from environment variable');
+      }
     } catch (err) {
       console.error('StreamingService: Failed to write cookies file:', err.message);
     }
