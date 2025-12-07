@@ -64,9 +64,17 @@ class YouTubeService {
         try {
           const result = JSON.parse(stdout.trim());
           if (result.id) {
-            // Flat-playlist returns minimal info, get full song details
-            const songInfo = await YouTubeService.getSongInfo(result.id);
-            resolve(songInfo);
+            // Create song from flat-playlist data (video fetch is blocked on cloud servers)
+            const song = Song.fromYouTubeData({
+              id: result.id,
+              title: result.title || 'Unknown Title',
+              artist: result.uploader || result.channel || 'Unknown Artist',
+              album: result.album || null,
+              duration: result.duration || 0,
+              thumbnail: `https://i.ytimg.com/vi/${result.id}/hqdefault.jpg`,
+              url: result.url || result.webpage_url || `https://music.youtube.com/watch?v=${result.id}`
+            });
+            resolve(song);
           } else {
             resolve(null);
           }
