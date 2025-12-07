@@ -30,7 +30,8 @@ class YouTubeService {
   static async searchSong(query) {
     return new Promise((resolve, reject) => {
       const encodedQuery = encodeURIComponent(query);
-      const searchUrl = `https://music.youtube.com/search?q=${encodedQuery}`;
+      // Add filter for songs only (sp=EgWKAQIIAQ%3D%3D)
+      const searchUrl = `https://music.youtube.com/search?q=${encodedQuery}&sp=EgWKAQIIAQ%3D%3D`;
 
       const args = [
         '-j',
@@ -55,6 +56,7 @@ class YouTubeService {
 
       ytdlp.on('close', async (code) => {
         if (code !== 0 || !stdout.trim()) {
+          console.error('yt-dlp search failed:', stderr);
           resolve(null);
           return;
         }
@@ -62,17 +64,20 @@ class YouTubeService {
         try {
           const result = JSON.parse(stdout.trim());
           if (result.id) {
+            // Flat-playlist returns minimal info, get full song details
             const songInfo = await YouTubeService.getSongInfo(result.id);
             resolve(songInfo);
           } else {
             resolve(null);
           }
         } catch (error) {
+          console.error('Failed to parse yt-dlp output:', error.message);
           resolve(null);
         }
       });
 
-      ytdlp.on('error', () => {
+      ytdlp.on('error', (err) => {
+        console.error('yt-dlp spawn error:', err.message);
         resolve(null);
       });
     });
