@@ -1,4 +1,8 @@
 const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
 
 class StreamingService {
   constructor() {
@@ -26,9 +30,15 @@ class StreamingService {
       '-f', 'bestaudio/best',
       '--no-playlist',
       '-o', '-',
-      '--no-warnings',
-      youtubeUrl
+      '--no-warnings'
     ];
+
+    // Add cookies if available
+    if (fs.existsSync(COOKIES_PATH)) {
+      ytdlpArgs.push('--cookies', COOKIES_PATH);
+    }
+
+    ytdlpArgs.push(youtubeUrl);
 
     // ffmpeg converts to mp3 for browser compatibility
     const ffmpegArgs = [
