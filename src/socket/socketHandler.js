@@ -31,6 +31,21 @@ function createSocketHandler(io, services) {
       io.emit('listenerUpdate', { count: radioService.getListenerCount() });
     });
 
+    // Typing indicator
+    socket.on('typing', ({ isTyping }) => {
+      const user = userService.getUserBySocketId(socket.id);
+
+      if (!user) {
+        return;
+      }
+
+      socket.broadcast.emit('userTyping', {
+        userId: user.id,
+        username: user.name,
+        isTyping: isTyping
+      });
+    });
+
     // Chat message
     socket.on('sendMessage', ({ message }) => {
       const user = userService.getUserBySocketId(socket.id);
@@ -78,11 +93,21 @@ function createSocketHandler(io, services) {
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${socket.id}`);
 
-      const user = userService.disconnectUser(socket.id);
-      radioService.removeListener(socket.id);
+      const user = userService.getUserBySocketId(socket.id);
 
       if (user) {
-        io.emit('userOffline', user.getPublicInfo());
+        socket.broadcast.emit('userTyping', {
+          userId: user.id,
+          username: user.name,
+          isTyping: false
+        });
+      }
+
+      const disconnectedUser = userService.disconnectUser(socket.id);
+      radioService.removeListener(socket.id);
+
+      if (disconnectedUser) {
+        io.emit('userOffline', disconnectedUser.getPublicInfo());
         io.emit('usersUpdate', { users: userService.getOnlineUsers() });
       }
 
