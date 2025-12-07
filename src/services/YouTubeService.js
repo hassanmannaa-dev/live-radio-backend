@@ -6,7 +6,27 @@ const Song = require('../models/Song');
 // Path to cookies file (in project root)
 const COOKIES_PATH = path.join(__dirname, '../../cookies.txt');
 
+// Cache for song data (to avoid blocked video fetch on cloud servers)
+const songCache = new Map();
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
 class YouTubeService {
+  static cacheSong(song) {
+    songCache.set(song.id, {
+      song,
+      timestamp: Date.now()
+    });
+  }
+
+  static getCachedSong(videoId) {
+    const cached = songCache.get(videoId);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.song;
+    }
+    songCache.delete(videoId);
+    return null;
+  }
+
   static initCookies() {
     // If cookies file doesn't exist but env var does, create it
     if (!fs.existsSync(COOKIES_PATH) && process.env.YOUTUBE_COOKIES) {
@@ -74,6 +94,8 @@ class YouTubeService {
               thumbnail: `https://i.ytimg.com/vi/${result.id}/hqdefault.jpg`,
               url: result.url || result.webpage_url || `https://music.youtube.com/watch?v=${result.id}`
             });
+            // Cache the song for later retrieval by ID
+            YouTubeService.cacheSong(song);
             resolve(song);
           } else {
             resolve(null);
@@ -92,8 +114,15 @@ class YouTubeService {
   }
 
   static async getSongInfo(videoId) {
+    // Check cache first (populated by searchSong)
+    const cached = YouTubeService.getCachedSong(videoId);
+    if (cached) {
+      console.log('Song retrieved from cache:', videoId);
+      return cached;
+    }
+
     return new Promise((resolve, reject) => {
-      // Use flat-playlist search by video ID (direct video fetch is blocked on cloud servers)
+      // Fallback: search for the video ID
       const searchUrl = `https://music.youtube.com/search?q=${videoId}&sp=EgWKAQIIAQ%3D%3D`;
 
       const args = [
