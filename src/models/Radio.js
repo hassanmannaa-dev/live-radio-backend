@@ -15,11 +15,13 @@ class Radio {
   }
 
   getState() {
+    const position = this.getCurrentPosition();
+    console.log(`Song position requested: ${position}s`);
     return {
       currentSong: this.currentSong ? this.currentSong.getInfo() : null,
       isPlaying: this.isPlaying,
       startTime: this.startTime,
-      position: this.getCurrentPosition(),
+      position: position,
       listenerCount: this.getListenerCount()
     };
   }
